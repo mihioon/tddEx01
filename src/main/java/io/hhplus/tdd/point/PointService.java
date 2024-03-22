@@ -103,20 +103,26 @@ public class PointService {
 
     // 포인트 충전
     public UserPoint addPoint(Long id, Long amount){
+        return addOrUsePoint(id, amount, TransactionType.CHARGE);
+        /*
         savePointHistory(id, amount, TransactionType.CHARGE);
         Long point = calPointFromHistory(id);
         UserPoint result = saveUserPoint(id, point);
         return result;
+        */
     }
 
     // 포인트 사용
     public UserPoint usePoint(Long id, Long amount){
+        return addOrUsePoint(id, amount, TransactionType.USE);
+        /*
         savePointHistory(id, amount, TransactionType.USE);
         UserPoint result = new UserPoint(0L, 0L, 0L);
         Long point = calPointFromHistory(id);
         if( point < amount ){ return result; }
         result = saveUserPoint(id, point);
         return result;
+         */
     }
 
     // 금액 -> 포인트 계산

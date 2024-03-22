@@ -1,5 +1,6 @@
 package io.hhplus.tdd.point;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 
@@ -10,7 +11,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -49,13 +50,14 @@ class PointControllerTest {
         List<Future<String>> futures = new ArrayList<>();
 
         Long chargeAmount = 1000L; // 충전량
-        Long useAmount = 3000L; // 사용량
+        Long useAmount = 1000L; // 사용량
 
-        // 병렬로 api 호출하기
+        // 병렬로 api 호출하기 charge use 동일한 횟수로 실행 > 결과가 초기값과 동일하게
         for (int i = 0; i < requestNumber; i++) {
+            int finalI = i;
             executorService.submit(() -> {
                 try {
-                    if (ThreadLocalRandom.current().nextBoolean()) {
+                    if ( finalI % 2 == 0 ) {
                         // 충전
                         mvc.perform(patch("/point/1/charge")
                                         .content(String.valueOf(chargeAmount))
@@ -79,6 +81,22 @@ class PointControllerTest {
         latch.await(); // 모든 스레드 시작 대기
         executorService.shutdown(); // 스레드 풀 종료
 
-        //모르겠습니다...
+        String finalResult = mvc.perform(get("/point/1"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(parseJson(finalResult)).isNotNull();
+        assertThat(parseJson(finalResult)).isEqualTo(initialAmount);
+    }
+
+    Long parseJson(String string){
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            UserPoint userPoint = objectMapper.readValue(string, UserPoint.class);
+            return userPoint.point();
+        } catch (JsonProcessingException e) {
+            return null;
+        }
     }
 }
