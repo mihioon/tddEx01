@@ -20,7 +20,7 @@ public class PointService {
     @Autowired
     private PointHistoryTable pointHistoryTable;
 
-    private ConcurrentHashMap<Long, Lock> lockMap = new ConcurrentHashMap<>();
+    final private ConcurrentHashMap<Long, Lock> lockMap = new ConcurrentHashMap<>();
 
     // 포인트 조회
     public UserPoint getPoint(Long id) {
@@ -87,43 +87,39 @@ public class PointService {
 
         try {
             lock.lock();
-
-            savePointHistory(id, amount, type);
-            Long point = calPointFromHistory(id);
+            Long point = getPoint(id).point();
             if( type == TransactionType.USE && point < amount ){
                 return result;
             }
-            result = saveUserPoint(id, point);
+            savePointHistory(id, amount, type);
+            point = calPointFromHistory(id);
+            saveUserPoint(id, point);
         } finally {
             lock.unlock();
         }
+        result = getPoint(id);
         return result;
     }
 
-
+    /*
     // 포인트 충전
     public UserPoint addPoint(Long id, Long amount){
-        return addOrUsePoint(id, amount, TransactionType.CHARGE);
-        /*
         savePointHistory(id, amount, TransactionType.CHARGE);
         Long point = calPointFromHistory(id);
         UserPoint result = saveUserPoint(id, point);
         return result;
-        */
     }
 
     // 포인트 사용
     public UserPoint usePoint(Long id, Long amount){
-        return addOrUsePoint(id, amount, TransactionType.USE);
-        /*
         savePointHistory(id, amount, TransactionType.USE);
         UserPoint result = new UserPoint(0L, 0L, 0L);
         Long point = calPointFromHistory(id);
         if( point < amount ){ return result; }
         result = saveUserPoint(id, point);
         return result;
-         */
     }
+    */
 
     // 금액 -> 포인트 계산
     public Long calAmount(Long amount) {

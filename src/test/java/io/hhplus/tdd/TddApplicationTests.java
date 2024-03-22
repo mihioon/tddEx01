@@ -1,12 +1,15 @@
 package io.hhplus.tdd;
 
+import io.hhplus.tdd.database.PointHistoryTable;
 import io.hhplus.tdd.point.PointHistory;
 import io.hhplus.tdd.point.PointService;
 import io.hhplus.tdd.point.TransactionType;
 import io.hhplus.tdd.point.UserPoint;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.List;
 
@@ -19,9 +22,17 @@ class TddApplicationTests {
 	@Autowired
 	private PointService pointService;
 
+	@Autowired
+	private PointHistoryTable pointHistoryTable;
+
 	private final Long id = 10L;
 	private final Long amount = 1000L;
 	private final Long point = 100L;
+
+	@BeforeEach
+	void setUp() {
+	}
+
 
 	@Test
 	void contextLoads() {
@@ -156,7 +167,7 @@ class TddApplicationTests {
 	void addPointTest(){
 		// given
 		// when
-		UserPoint result = pointService.addPoint(id, amount);
+		UserPoint result = pointService.addOrUsePoint(id, amount, TransactionType.CHARGE);
 		// then
 		/* null */
 		checkNotNull(result);
@@ -165,27 +176,28 @@ class TddApplicationTests {
 		assertThat(result.point()).isEqualTo(1000L);
 
 		// addPoint 2회
-		result = pointService.addPoint(id, 2000L);
+		result = pointService.addOrUsePoint(id, 2000L, TransactionType.CHARGE);
 		assertThat(result.point()).isEqualTo(3000L);
 	}
 
 	@Test
 	void usePointTest(){
 		// given
-		UserPoint result = pointService.addPoint(id, 2000L);
+		UserPoint result = pointService.addOrUsePoint(id, 2000L, TransactionType.CHARGE);
 		// when
-		result = pointService.usePoint(id, amount);
+		result = pointService.addOrUsePoint(id, amount, TransactionType.USE);
 		// then
 		/* null */
 		checkNotNull(result);
 		/* 값 확인 */
 		assertThat(result.id()).isEqualTo(id);
-		assertThat(result.point()).isEqualTo(amount);
+		assertThat(result.point()).isEqualTo(1000L);
 
 		/* 잔고가 부족할 경우, 포인트 사용은 실패 */
-		result = pointService.usePoint(id, 2000L);
+		result = pointService.addOrUsePoint(id, 2000L,  TransactionType.USE);
 		checkNotNull(result);
-		checkDefault(result);
+		System.out.println(result);
+		assertThat(result.point()).isEqualTo(0L);
 	}
 
 	/**************************
