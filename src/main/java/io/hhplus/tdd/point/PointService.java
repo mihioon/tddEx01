@@ -2,11 +2,15 @@ package io.hhplus.tdd.point;
 
 import io.hhplus.tdd.database.PointHistoryTable;
 import io.hhplus.tdd.database.UserPointTable;
+import org.apache.catalina.User;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 @Service
 public class PointService {
@@ -15,6 +19,8 @@ public class PointService {
     private UserPointTable userPointTable;
     @Autowired
     private PointHistoryTable pointHistoryTable;
+
+    private ConcurrentHashMap<Long, Lock> lockMap = new ConcurrentHashMap<>();
 
     // 포인트 조회
     public UserPoint getPoint(Long id) {
@@ -60,6 +66,40 @@ public class PointService {
         }
         return result;
     }
+
+    //
+    public UserPoint addOrUsePointChk(Long id, Long amount, TransactionType type){
+        UserPoint result = new UserPoint(0L,0L,0L);
+        savePointHistory(id, amount, type);
+        Long point = calPointFromHistory(id);
+        if( type == TransactionType.USE && point < amount ){
+            return result;
+        }
+        result = saveUserPoint(id, point);
+
+        return result;
+    }
+
+    //
+    public UserPoint addOrUsePoint(Long id, Long amount, TransactionType type){
+        Lock lock = lockMap.computeIfAbsent(id, k -> new ReentrantLock());
+        UserPoint result = new UserPoint(0L,0L,0L);
+
+        try {
+            lock.lock();
+
+            savePointHistory(id, amount, type);
+            Long point = calPointFromHistory(id);
+            if( type == TransactionType.USE && point < amount ){
+                return result;
+            }
+            result = saveUserPoint(id, point);
+        } finally {
+            lock.unlock();
+        }
+        return result;
+    }
+
 
     // 포인트 충전
     public UserPoint addPoint(Long id, Long amount){

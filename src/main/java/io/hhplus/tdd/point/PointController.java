@@ -41,7 +41,7 @@ public class PointController {
      */
     @PatchMapping("{id}/charge")
     public UserPoint charge(@PathVariable Long id, @RequestBody Long amount) {
-        UserPoint result = pointService.addPoint(id, amount);
+        UserPoint result = pointService.addOrUsePointChk(id, amount, TransactionType.CHARGE);
         //return new UserPoint(0L, 0L, 0L);
         return result;
     }
@@ -51,7 +51,7 @@ public class PointController {
      */
     @PatchMapping("{id}/use")
     public UserPoint use(@PathVariable Long id, @RequestBody Long amount) {
-        UserPoint result = pointService.usePoint(id, amount);
+        UserPoint result = pointService.addOrUsePointChk(id, amount, TransactionType.USE);
         //return new UserPoint(0L, 0L, 0L);
         return result;
     }
