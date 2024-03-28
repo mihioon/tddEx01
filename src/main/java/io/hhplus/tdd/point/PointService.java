@@ -1,12 +1,12 @@
 package io.hhplus.tdd.point;
 
-import io.hhplus.tdd.database.PointHistoryTable;
-import io.hhplus.tdd.database.UserPointTable;
-import org.apache.catalina.User;
+import io.hhplus.tdd.exception.PointException;
+import io.hhplus.tdd.repository.PointHistoryRepository;
+import io.hhplus.tdd.repository.UserPointRepository;
+import io.hhplus.tdd.serviceDTO.PointDTO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.Lock;
@@ -16,137 +16,98 @@ import java.util.concurrent.locks.ReentrantLock;
 public class PointService {
 
     @Autowired
-    private UserPointTable userPointTable;
+    private UserPointRepository userPointRepository;
     @Autowired
-    private PointHistoryTable pointHistoryTable;
+    private PointHistoryRepository pointHistoryRepository;
 
     final private ConcurrentHashMap<Long, Lock> lockMap = new ConcurrentHashMap<>();
 
     // 포인트 조회
-    public UserPoint getPoint(Long id) {
-        UserPoint result = new UserPoint(0L, 0L, 0L);
+    public PointDTO getPoint(PointDTO param) throws PointException {
+        // Long id
+        PointDTO result = null;
         try {
-            result = userPointTable.selectById(id);
-        } catch (InterruptedException e){
-            System.out.println(e);
+            result = userPointRepository.selectById(param);
+        }catch (InterruptedException e) {
+            throw new PointException("");
         }
         return result;
+    }
+
+    // User 포인트 저장
+    public void saveUserPoint(PointDTO param) throws PointException {
+        PointDTO result = null;
+        if( param.getId() == null || param.getAmount() == null ){
+            throw new PointException("없는 값이 존재");
+        }
+        if( param.getAmount() <= 0 ){
+            throw new PointException("값이 0보다 작음");
+        }
+        try{
+            result = userPointRepository.insertOrUpdate(param);
+        } catch (InterruptedException e) {
+            throw new PointException("");
+        }
     }
 
     // 포인트 충전/이용내역 조회
-    public List<PointHistory> getPointHistory(Long id) {
-        List<PointHistory> result = Collections.emptyList();
-        if( id == null ){ return result; }
-        result = pointHistoryTable.selectAllByUserId(id);
+    public List<PointDTO> getPointHistory(PointDTO param) throws PointException, InterruptedException {
+        if( param.getId() == null ){ throw new PointException("id값이 없습니다."); }
+        List<PointDTO> result = pointHistoryRepository.selectAllByUserId(param);
         return result;
     }
 
-    // 포인트 내역 저장
-    public PointHistory savePointHistory(Long id, Long amount, TransactionType type){
-        PointHistory result = new PointHistory(0L, 0L, null, 0L,0L);
-        if( id == null || amount == null || amount <= 0 || type == null ){ return result; }
-        if( amount <= 0 ){ return result; }
-
+    // 포인트 history 저장
+    public void savePointHistory(PointDTO param) throws PointException {
+        if( param.getId() == null || param.getAmount() == null || param.getTransactionType() == null ){
+            throw new PointException("없는 값이 존재");
+        }
+        if( param.getAmount() <= 0 ){
+            throw new PointException("값이 0보다 작음");
+        }
         try{
-            result = pointHistoryTable.insert(id, amount, type, System.currentTimeMillis());
+            pointHistoryRepository.insert(param);
         } catch (InterruptedException e) {
-            System.out.println(e);
+            throw new PointException("");
         }
-        return result;
     }
 
-    // 포인트 저장
-    public UserPoint saveUserPoint(Long id, Long point){
-        UserPoint result = new UserPoint(0L, 0L, 0L);
-        if( id == null || point == null || point == 0L){ return result; }
-        try{
-            result = userPointTable.insertOrUpdate(id, point);
-        } catch (InterruptedException e) {
-            System.out.println(e);
-        }
-        return result;
-    }
-
-    //
-    public UserPoint addOrUsePointChk(Long id, Long amount, TransactionType type){
-        UserPoint result = new UserPoint(0L,0L,0L);
-        savePointHistory(id, amount, type);
-        Long point = calPointFromHistory(id);
-        if( type == TransactionType.USE && point < amount ){
-            return result;
-        }
-        result = saveUserPoint(id, point);
-
-        return result;
-    }
-
-    //
-    public UserPoint addOrUsePoint(Long id, Long amount, TransactionType type){
-        Lock lock = lockMap.computeIfAbsent(id, k -> new ReentrantLock());
-        UserPoint result = new UserPoint(0L,0L,0L);
+    // 포인트 적립 또는 사용
+    public void addOrUsePoint(PointDTO param) throws PointException, InterruptedException {
+        Lock lock = lockMap.computeIfAbsent(param.getId(), k -> new ReentrantLock());
 
         try {
             lock.lock();
-            Long point = getPoint(id).point();
-            if( type == TransactionType.USE && point < amount ){
-                return result;
+
+            Long nowPoint = getPoint(param).getAmount();
+            param.setNowPoint(nowPoint);
+            pointValidation(param);
+
+            pointHistoryRepository.insert(param); // PointHistory 저장
+
+            // User amount 계산
+            Long amount = param.getAmount();
+            if(param.getTransactionType() == TransactionType.USE){
+                amount = nowPoint - amount;
+            }else if(param.getTransactionType() == TransactionType.CHARGE){
+                amount = nowPoint + amount;
             }
-            savePointHistory(id, amount, type);
-            point = calPointFromHistory(id);
-            saveUserPoint(id, point);
+            param.setAmount(amount);
+
+            saveUserPoint(param); // UserPoint 저장
         } finally {
             lock.unlock();
         }
-        result = getPoint(id);
-        return result;
     }
 
-    /*
-    // 포인트 충전
-    public UserPoint addPoint(Long id, Long amount){
-        savePointHistory(id, amount, TransactionType.CHARGE);
-        Long point = calPointFromHistory(id);
-        UserPoint result = saveUserPoint(id, point);
-        return result;
-    }
 
-    // 포인트 사용
-    public UserPoint usePoint(Long id, Long amount){
-        savePointHistory(id, amount, TransactionType.USE);
-        UserPoint result = new UserPoint(0L, 0L, 0L);
-        Long point = calPointFromHistory(id);
-        if( point < amount ){ return result; }
-        result = saveUserPoint(id, point);
-        return result;
-    }
-    */
-
-    // 금액 -> 포인트 계산
-    public Long calAmount(Long amount) {
-        if (amount == null){
-            return 0L;
+    // 유효성 체크 : 현재포인트 값이 사용할 포인트 값보다 작으면 예외
+    public void pointValidation(PointDTO param) throws PointException {
+        if(param.getId() == null|| param.getAmount() == null||param.getTransactionType() == null){
+            throw new PointException("없는 값이 존재");
         }
-        return amount * 10L / 100L;
-    }
-
-    // 포인트 내역 계산
-    public Long calPointFromHistory(Long id){
-        Long result = 0L;
-        if( id == null ){ return result; }
-
-        List<PointHistory> pointList = getPointHistory(id);
-
-        if ( !pointList.isEmpty() ){
-            for( int i=0; i < pointList.size(); i++){
-                TransactionType type = pointList.get(i).type();
-                Long point = pointList.get(i).amount();
-                if( type == TransactionType.CHARGE ){
-                    result = result + point;
-                } else if( type == TransactionType.USE ) {
-                    result = result - point;
-                }
-            }
+        if( param.getTransactionType() == TransactionType.USE && param.getNowPoint() < param.getAmount() ){
+            throw new PointException("사용 가능 포인트 초과");
         }
-        return result;
     }
 }
